@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { chargerDonnees, sauvegarderDonnees, ecouterChangements } from "./supabase.js";
+import { chargerDonnees, sauvegarderDonnees, getUpdatedAt } from "./supabase.js";
 
 // Palette catégories (cycle pour nouvelles enveloppes)
 const CAT_PALETTES = [
@@ -43,6 +43,7 @@ export default function App() {
   const [editTarget, setEditTarget] = useState(null);
   const [form, setForm] = useState({});
   const isRemoteUpdate = useRef(false);
+  const lastUpdatedAt = useRef(null);
 
   // Chargement initial depuis Supabase
   useEffect(() => {
@@ -50,21 +51,31 @@ export default function App() {
       if (remote) setData({ ...DEFAULT_DATA, ...remote });
       setSynced(true);
     });
+    getUpdatedAt().then(ts => { lastUpdatedAt.current = ts; });
   }, []);
 
   // Sauvegarde vers Supabase à chaque changement local
   useEffect(() => {
     if (!synced || isRemoteUpdate.current) { isRemoteUpdate.current = false; return; }
-    sauvegarderDonnees(data);
+    sauvegarderDonnees(data).then(() => {
+      getUpdatedAt().then(ts => { lastUpdatedAt.current = ts; });
+    });
   }, [data, synced]);
 
-  // Écoute les changements en temps réel (autre appareil)
+  // Polling toutes les 5 secondes pour détecter les changements d'un autre appareil
   useEffect(() => {
-    const channel = ecouterChangements((remoteData) => {
-      isRemoteUpdate.current = true;
-      setData(prev => ({ ...prev, ...remoteData }));
-    });
-    return () => channel.unsubscribe();
+    const interval = setInterval(async () => {
+      const ts = await getUpdatedAt();
+      if (ts && ts !== lastUpdatedAt.current) {
+        lastUpdatedAt.current = ts;
+        const remote = await chargerDonnees();
+        if (remote) {
+          isRemoteUpdate.current = true;
+          setData(prev => ({ ...prev, ...remote }));
+        }
+      }
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const upd = (fn) => setData(prev => { const n = JSON.parse(JSON.stringify(prev)); fn(n); return n; });

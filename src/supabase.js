@@ -28,12 +28,14 @@ export async function sauvegarderDonnees(payload) {
   } catch {}
 }
 
-export function ecouterChangements(callback) {
-  if (!supabase) return { unsubscribe: () => {} };
-  return supabase
-    .channel("livret_sync")
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "livret_data" }, (payload) => {
-      callback(payload.new.data);
-    })
-    .subscribe();
+export async function getUpdatedAt() {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase
+      .from("livret_data")
+      .select("updated_at")
+      .eq("id", "foyer")
+      .single();
+    return data?.updated_at ?? null;
+  } catch { return null; }
 }
