@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { chargerDonnees, sauvegarderDonnees, getUpdatedAt } from "./supabase.js";
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // Palette catégories (cycle pour nouvelles enveloppes)
 const CAT_PALETTES = [
@@ -44,6 +47,20 @@ export default function App() {
   const [form, setForm] = useState({});
   const isRemoteUpdate = useRef(false);
   const lastUpdatedAt = useRef(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  );
+
+  const handleDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    upd(d => {
+      const oldIndex = d.enveloppes.findIndex(e => e.id === active.id);
+      const newIndex = d.enveloppes.findIndex(e => e.id === over.id);
+      d.enveloppes = arrayMove(d.enveloppes, oldIndex, newIndex);
+    });
+  };
 
   // Chargement initial depuis Supabase
   useEffect(() => {
@@ -282,36 +299,21 @@ export default function App() {
           </div>
 
           {/* Liste */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "4px 12px 20px" }}>
-            {data.enveloppes.map(env => {
-              const pal = CAT_PALETTES[env.paletteIdx ?? 4];
-              const nbMvt = data.mouvements.filter(m => m.enveloppeId === env.id).length;
-              const pct = getPct(env);
-              return (
-                <button key={env.id} className="env-card" onClick={() => { setActiveEnv(env.id); setView("detail"); }}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 14px", marginBottom: 8, background: "#FFFFFF", border: "0.5px solid #EDE9E3", borderRadius: 12, textAlign: "left", boxShadow: "0 1px 3px rgba(0,0,0,0.03)", transition: "all .15s" }}>
-                  {/* Icône */}
-                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: pal.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{env.icon}</div>
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#2D3A35" }}>{env.name}</div>
-                    <div style={{ fontSize: 10, fontWeight: 400, color: "#B0A899", marginTop: 2 }}>
-                      {nbMvt} mouvement{nbMvt !== 1 ? "s" : ""}
-                      {env.provisionMensuelle > 0 && <span> · {fmt(env.provisionMensuelle)}/mois</span>}
-                    </div>
-                    {/* Barre progression */}
-                    <div style={{ marginTop: 6, height: 4, background: "#F0EDE8", borderRadius: 2 }}>
-                      <div style={{ height: "100%", width: `${pct}%`, background: pal.bar, borderRadius: 2, transition: "width .6s ease" }} />
-                    </div>
-                  </div>
-                  {/* Montant */}
-                  <div style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 600, color: env.solde < 0 ? "#C0533A" : "#2D3A35", flexShrink: 0 }}>
-                    {fmt(env.solde)}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={data.enveloppes.map(e => e.id)} strategy={verticalListSortingStrategy}>
+              <div style={{ flex: 1, overflowY: "auto", padding: "4px 12px 20px" }}>
+                {data.enveloppes.map(env => (
+                  <SortableEnvCard
+                    key={env.id}
+                    env={env}
+                    mouvements={data.mouvements}
+                    onOpen={() => { setActiveEnv(env.id); setView("detail"); }}
+                    getPct={getPct}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
       )}
 
@@ -598,6 +600,43 @@ export default function App() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SortableEnvCard({ env, mouvements, onOpen, getPct }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: env.id });
+  const pal = CAT_PALETTES[env.paletteIdx ?? 4];
+  const nbMvt = mouvements.filter(m => m.enveloppeId === env.id).length;
+  const pct = getPct(env);
+
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", background: "#FFFFFF", border: "0.5px solid #EDE9E3", borderRadius: 12, boxShadow: isDragging ? "0 4px 16px rgba(0,0,0,0.10)" : "0 1px 3px rgba(0,0,0,0.03)" }}>
+        {/* Poignée drag */}
+        <div {...attributes} {...listeners}
+          style={{ padding: "0 10px 0 14px", cursor: "grab", color: "#D0CCC8", fontSize: 16, flexShrink: 0, touchAction: "none" }}>
+          ⠿
+        </div>
+        {/* Contenu cliquable */}
+        <button className="env-card" onClick={onOpen}
+          style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, padding: "13px 14px 13px 0", background: "transparent", border: "none", textAlign: "left" }}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", background: pal.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{env.icon}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#2D3A35" }}>{env.name}</div>
+            <div style={{ fontSize: 10, fontWeight: 400, color: "#B0A899", marginTop: 2 }}>
+              {nbMvt} mouvement{nbMvt !== 1 ? "s" : ""}
+              {env.provisionMensuelle > 0 && <span> · {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(env.provisionMensuelle)}/mois</span>}
+            </div>
+            <div style={{ marginTop: 6, height: 4, background: "#F0EDE8", borderRadius: 2 }}>
+              <div style={{ height: "100%", width: `${pct}%`, background: pal.bar, borderRadius: 2, transition: "width .6s ease" }} />
+            </div>
+          </div>
+          <div style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 600, color: env.solde < 0 ? "#C0533A" : "#2D3A35", flexShrink: 0, paddingRight: 4 }}>
+            {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(env.solde ?? 0)}
+          </div>
+        </button>
+      </div>
     </div>
   );
 }
