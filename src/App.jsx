@@ -150,9 +150,12 @@ export default function App() {
 
   const appliquerProvisions = () => {
     const selection = form.selectionProvisions || {};
+    const moisCourant = today().slice(0, 7);
     upd(d => {
       d.enveloppes.forEach(e => {
         if (e.provisionMensuelle > 0 && selection[e.id] === true) {
+          const dejaFait = d.mouvements.some(m => m.enveloppeId === e.id && m.label === "Provision mensuelle" && m.date.startsWith(moisCourant));
+          if (dejaFait) return;
           const m = { id: Date.now() + e.id, enveloppeId: e.id, type: "credit", label: "Provision mensuelle", montant: e.provisionMensuelle, date: today() };
           d.mouvements.push(m);
           e.solde += e.provisionMensuelle;
@@ -514,7 +517,9 @@ export default function App() {
             {modal === "provision" && (() => {
               const envsAvecProv = data.enveloppes.filter(e => e.provisionMensuelle > 0);
               const sel = form.selectionProvisions || {};
-              const totalSel = envsAvecProv.filter(e => sel[e.id] !== false).reduce((s, e) => s + e.provisionMensuelle, 0);
+              const moisCourant = today().slice(0, 7);
+              const dejaProvisionnees = new Set(data.mouvements.filter(m => m.label === "Provision mensuelle" && m.date.startsWith(moisCourant)).map(m => m.enveloppeId));
+              const totalSel = envsAvecProv.filter(e => sel[e.id] === true && !dejaProvisionnees.has(e.id)).reduce((s, e) => s + e.provisionMensuelle, 0);
               const tousCoches = envsAvecProv.every(e => sel[e.id] === true);
               return (
                 <>
@@ -539,15 +544,18 @@ export default function App() {
                   )}
 
                   {envsAvecProv.map(e => {
-                    const checked = sel[e.id] !== false;
+                    const checked = sel[e.id] === true;
+                    const deja = dejaProvisionnees.has(e.id);
                     return (
-                      <button key={e.id} onClick={() => setForm(f => ({ ...f, selectionProvisions: { ...f.selectionProvisions, [e.id]: !checked } }))}
-                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", marginBottom: 6, background: checked ? "#F0FAF4" : "#FAFAF8", border: `0.5px solid ${checked ? "#AADABF" : "#EDE9E3"}`, borderRadius: 10, textAlign: "left" }}>
-                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${checked ? "#3A8A5C" : "#D0CCC8"}`, background: checked ? "#3A8A5C" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          {checked && <span style={{ color: "#fff", fontSize: 11, lineHeight: 1 }}>✓</span>}
+                      <button key={e.id} onClick={() => { if (deja) return; setForm(f => ({ ...f, selectionProvisions: { ...f.selectionProvisions, [e.id]: !checked } })); }}
+                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", marginBottom: 6, background: deja ? "#F7F5F2" : checked ? "#F0FAF4" : "#FAFAF8", border: `0.5px solid ${deja ? "#EDE9E3" : checked ? "#AADABF" : "#EDE9E3"}`, borderRadius: 10, textAlign: "left", opacity: deja ? 0.6 : 1, cursor: deja ? "default" : "pointer" }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${deja ? "#D0CCC8" : checked ? "#3A8A5C" : "#D0CCC8"}`, background: deja ? "#EDE9E3" : checked ? "#3A8A5C" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {deja ? <span style={{ color: "#B0A899", fontSize: 11, lineHeight: 1 }}>✓</span> : checked ? <span style={{ color: "#fff", fontSize: 11, lineHeight: 1 }}>✓</span> : null}
                         </div>
-                        <span style={{ fontSize: 13, color: "#2D3A35", flex: 1 }}>{e.icon} {e.name}</span>
-                        <span style={{ fontSize: 13, color: checked ? "#3A8A5C" : "#B0A899", fontWeight: 600 }}>+{fmt(e.provisionMensuelle)}</span>
+                        <span style={{ fontSize: 13, color: deja ? "#B0A899" : "#2D3A35", flex: 1 }}>{e.icon} {e.name}</span>
+                        <span style={{ fontSize: 12, color: deja ? "#B0A899" : checked ? "#3A8A5C" : "#B0A899", fontWeight: 600 }}>
+                          {deja ? "déjà fait" : `+${fmt(e.provisionMensuelle)}`}
+                        </span>
                       </button>
                     );
                   })}
