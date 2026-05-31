@@ -152,7 +152,7 @@ export default function App() {
     const selection = form.selectionProvisions || {};
     upd(d => {
       d.enveloppes.forEach(e => {
-        if (e.provisionMensuelle > 0 && selection[e.id] !== false) {
+        if (e.provisionMensuelle > 0 && selection[e.id] === true) {
           const m = { id: Date.now() + e.id, enveloppeId: e.id, type: "credit", label: "Provision mensuelle", montant: e.provisionMensuelle, date: today() };
           d.mouvements.push(m);
           e.solde += e.provisionMensuelle;
@@ -286,7 +286,7 @@ export default function App() {
         <div className="fade" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           {/* Actions */}
           <div style={{ display: "flex", gap: 8, padding: "12px 12px 8px" }}>
-            <button onClick={() => { const sel = {}; data.enveloppes.filter(e => e.provisionMensuelle > 0).forEach(e => { sel[e.id] = true; }); setForm({ selectionProvisions: sel }); setModal("provision"); }}
+            <button onClick={() => { setForm({ selectionProvisions: {} }); setModal("provision"); }}
               style={{ flex: 1, padding: "10px 14px", background: "#FFFFFF", border: "0.5px solid #EDE9E3", borderRadius: 10, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: "#3A8A5C", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
               ↑ Provisions
             </button>
@@ -515,7 +515,7 @@ export default function App() {
               const envsAvecProv = data.enveloppes.filter(e => e.provisionMensuelle > 0);
               const sel = form.selectionProvisions || {};
               const totalSel = envsAvecProv.filter(e => sel[e.id] !== false).reduce((s, e) => s + e.provisionMensuelle, 0);
-              const tousCoches = envsAvecProv.every(e => sel[e.id] !== false);
+              const tousCoches = envsAvecProv.every(e => sel[e.id] === true);
               return (
                 <>
                   <div style={{ fontFamily: "'Lora', serif", fontSize: 17, fontWeight: 600, marginBottom: 6, color: "#2D3A35" }}>Provisions du mois</div>
