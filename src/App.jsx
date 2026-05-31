@@ -190,7 +190,7 @@ export default function App() {
       upd(d => {
         const paletteIdx = d.enveloppes.length % CAT_PALETTES.length;
         if (form.isSavings) d.enveloppes.forEach(e => { e.isSavings = false; });
-        d.enveloppes.push({ id: d.nextId++, name: form.name, icon: form.icon || "📦", paletteIdx, provisionMensuelle: parseFloat(form.provisionMensuelle) || 0, solde: 0, isSavings: !!form.isSavings });
+        d.enveloppes.push({ id: d.nextId++, name: form.name, icon: form.icon || "📦", paletteIdx, provisionMensuelle: parseFloat(form.provisionMensuelle) || 0, objectif: parseFloat(form.objectif) || 0, solde: 0, isSavings: !!form.isSavings });
       });
     } else {
       upd(d => {
@@ -199,6 +199,7 @@ export default function App() {
         e.name = form.name;
         e.icon = form.icon || e.icon;
         e.provisionMensuelle = parseFloat(form.provisionMensuelle) || 0;
+        e.objectif = parseFloat(form.objectif) || 0;
         e.isSavings = !!form.isSavings;
       });
     }
@@ -216,10 +217,10 @@ export default function App() {
 
   const ICONS = ["🏠","⚡","📡","🛡️","💰","🚗","🛒","👶","💊","🎓","✈️","🎬","🐾","🏋️","📋"];
 
-  // Calcul barre progression enveloppe : solde / objectif (provision * 12) ou simple max des soldes
+  // Calcul barre progression enveloppe : objectif défini > provision*12 > max des soldes
   const maxSolde = Math.max(...data.enveloppes.map(e => e.solde), 1);
   const getPct = (env) => {
-    const ref = env.provisionMensuelle > 0 ? env.provisionMensuelle * 12 : maxSolde;
+    const ref = env.objectif > 0 ? env.objectif : env.provisionMensuelle > 0 ? env.provisionMensuelle * 12 : maxSolde;
     return Math.min(100, Math.max(0, ref > 0 ? (env.solde / ref) * 100 : 0));
   };
 
@@ -419,7 +420,7 @@ export default function App() {
                   <div style={{ fontSize: 10, fontWeight: 600, color: "#8FA89A", letterSpacing: 1 }}>ENVELOPPE</div>
                   <div style={{ fontFamily: "'Lora', serif", fontSize: 18, fontWeight: 600, color: "#2D3A35" }}>{envActive.name}</div>
                 </div>
-                <button onClick={() => { setEditTarget(envActive.id); setForm({ name: envActive.name, icon: envActive.icon, provisionMensuelle: envActive.provisionMensuelle, isSavings: !!envActive.isSavings }); setModal("editEnv"); }}
+                <button onClick={() => { setEditTarget(envActive.id); setForm({ name: envActive.name, icon: envActive.icon, provisionMensuelle: envActive.provisionMensuelle, objectif: envActive.objectif || "", isSavings: !!envActive.isSavings }); setModal("editEnv"); }}
                   style={{ fontSize: 12, color: "#B0A899", border: "0.5px solid #EDE9E3", borderRadius: 8, padding: "6px 10px", background: "rgba(255,255,255,0.7)" }}>✎</button>
               </div>
 
@@ -429,14 +430,25 @@ export default function App() {
                   <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 3, color: "#8FA89A", marginBottom: 4 }}>SOLDE</div>
                   <div style={{ fontFamily: "'Lora', serif", fontSize: 28, fontWeight: 600, color: envActive.solde < 0 ? "#C0533A" : "#2D3A35" }}>{fmt(envActive.solde)}</div>
                 </div>
-                {envActive.provisionMensuelle > 0 && (
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1, color: "#8FA89A", marginBottom: 4 }}>PROVISION</div>
-                    <div style={{ fontFamily: "'Lora', serif", fontSize: 15, color: "#3A8A5C" }}>
-                      {fmt(envActive.provisionMensuelle)}<span style={{ fontSize: 10, color: "#B0A899", fontFamily: "'Nunito', sans-serif" }}>/mois</span>
+                <div style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {envActive.provisionMensuelle > 0 && (
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1, color: "#8FA89A", marginBottom: 2 }}>PROVISION</div>
+                      <div style={{ fontFamily: "'Lora', serif", fontSize: 15, color: "#3A8A5C" }}>
+                        {fmt(envActive.provisionMensuelle)}<span style={{ fontSize: 10, color: "#B0A899", fontFamily: "'Nunito', sans-serif" }}>/mois</span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                  {envActive.objectif > 0 && (
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1, color: "#8FA89A", marginBottom: 2 }}>OBJECTIF</div>
+                      <div style={{ fontFamily: "'Lora', serif", fontSize: 15, color: "#6BAED4" }}>
+                        {Math.round(getPct(envActive))}%
+                        <span style={{ fontSize: 10, color: "#B0A899", fontFamily: "'Nunito', sans-serif" }}> / {fmt(envActive.objectif)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -579,6 +591,10 @@ export default function App() {
                 <input type="number" placeholder="0 €" value={form.provisionMensuelle || ""} onChange={e => setForm(f => ({ ...f, provisionMensuelle: e.target.value }))}
                   style={{ ...inputStyle, marginBottom: 16 }} />
 
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1, color: "#8FA89A", marginBottom: 8 }}>OBJECTIF À ATTEINDRE (optionnel)</div>
+                <input type="number" placeholder="ex : 5 000 €" value={form.objectif || ""} onChange={e => setForm(f => ({ ...f, objectif: e.target.value }))}
+                  style={{ ...inputStyle, marginBottom: 16 }} />
+
                 {/* Toggle épargne */}
                 <button onClick={() => setForm(f => ({ ...f, isSavings: !f.isSavings }))}
                   style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: form.isSavings ? "#E6F5ED" : "#F7F5F2", border: form.isSavings ? "0.5px solid #AADABF" : "0.5px solid #EDE9E3", borderRadius: 10, marginBottom: 20 }}>
@@ -628,8 +644,15 @@ function SortableEnvCard({ env, mouvements, onOpen, getPct }) {
               {nbMvt} mouvement{nbMvt !== 1 ? "s" : ""}
               {env.provisionMensuelle > 0 && <span> · {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(env.provisionMensuelle)}/mois</span>}
             </div>
-            <div style={{ marginTop: 6, height: 4, background: "#F0EDE8", borderRadius: 2 }}>
-              <div style={{ height: "100%", width: `${pct}%`, background: pal.bar, borderRadius: 2, transition: "width .6s ease" }} />
+            <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ flex: 1, height: 4, background: "#F0EDE8", borderRadius: 2 }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: pal.bar, borderRadius: 2, transition: "width .6s ease" }} />
+              </div>
+              {env.objectif > 0 && (
+                <span style={{ fontSize: 9, color: "#B0A899", flexShrink: 0 }}>
+                  {Math.round(pct)}% / {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(env.objectif)}
+                </span>
+              )}
             </div>
           </div>
           <div style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 600, color: env.solde < 0 ? "#C0533A" : "#2D3A35", flexShrink: 0, paddingRight: 4 }}>
