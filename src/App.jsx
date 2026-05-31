@@ -149,16 +149,17 @@ export default function App() {
   };
 
   const appliquerProvisions = () => {
+    const selection = form.selectionProvisions || {};
     upd(d => {
       d.enveloppes.forEach(e => {
-        if (e.provisionMensuelle > 0) {
+        if (e.provisionMensuelle > 0 && selection[e.id] !== false) {
           const m = { id: Date.now() + e.id, enveloppeId: e.id, type: "credit", label: "Provision mensuelle", montant: e.provisionMensuelle, date: today() };
           d.mouvements.push(m);
           e.solde += e.provisionMensuelle;
         }
       });
     });
-    setModal(null);
+    setModal(null); setForm({});
   };
 
   const effectuerTransfert = () => {
@@ -285,7 +286,7 @@ export default function App() {
         <div className="fade" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           {/* Actions */}
           <div style={{ display: "flex", gap: 8, padding: "12px 12px 8px" }}>
-            <button onClick={() => setModal("provision")}
+            <button onClick={() => { const sel = {}; data.enveloppes.filter(e => e.provisionMensuelle > 0).forEach(e => { sel[e.id] = true; }); setForm({ selectionProvisions: sel }); setModal("provision"); }}
               style={{ flex: 1, padding: "10px 14px", background: "#FFFFFF", border: "0.5px solid #EDE9E3", borderRadius: 10, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: "#3A8A5C", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
               ↑ Provisions
             </button>
@@ -510,28 +511,61 @@ export default function App() {
               </>
             )}
 
-            {modal === "provision" && (
-              <>
-                <div style={{ fontFamily: "'Lora', serif", fontSize: 17, fontWeight: 600, marginBottom: 6, color: "#2D3A35" }}>Provisions du mois</div>
-                <div style={{ fontSize: 12, color: "#8FA89A", marginBottom: 20 }}>Applique la provision mensuelle configurée sur chaque enveloppe.</div>
-                {data.enveloppes.filter(e => e.provisionMensuelle > 0).map(e => (
-                  <div key={e.id} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "0.5px solid #EDE9E3", fontSize: 13, color: "#2D3A35" }}>
-                    <span>{e.icon} {e.name}</span>
-                    <span style={{ color: "#3A8A5C", fontWeight: 600 }}>+{fmt(e.provisionMensuelle)}</span>
-                  </div>
-                ))}
-                {data.enveloppes.filter(e => e.provisionMensuelle > 0).length === 0 && (
-                  <div style={{ fontSize: 12, color: "#B0A899", textAlign: "center", padding: "20px 0" }}>Aucune provision configurée.</div>
-                )}
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 4px", fontSize: 12, color: "#8FA89A" }}>
-                  <span style={{ fontWeight: 600 }}>TOTAL</span>
-                  <span style={{ color: "#3A8A5C", fontFamily: "'Lora', serif", fontWeight: 600 }}>
-                    +{fmt(data.enveloppes.reduce((s, e) => s + e.provisionMensuelle, 0))}
-                  </span>
-                </div>
-                <button onClick={appliquerProvisions} style={{ ...btnPrimaryStyle, marginTop: 16 }}>APPLIQUER</button>
-              </>
-            )}
+            {modal === "provision" && (() => {
+              const envsAvecProv = data.enveloppes.filter(e => e.provisionMensuelle > 0);
+              const sel = form.selectionProvisions || {};
+              const totalSel = envsAvecProv.filter(e => sel[e.id] !== false).reduce((s, e) => s + e.provisionMensuelle, 0);
+              const tousCoches = envsAvecProv.every(e => sel[e.id] !== false);
+              return (
+                <>
+                  <div style={{ fontFamily: "'Lora', serif", fontSize: 17, fontWeight: 600, marginBottom: 6, color: "#2D3A35" }}>Provisions du mois</div>
+                  <div style={{ fontSize: 12, color: "#8FA89A", marginBottom: 16 }}>Sélectionne les enveloppes à provisionner.</div>
+
+                  {envsAvecProv.length === 0 && (
+                    <div style={{ fontSize: 12, color: "#B0A899", textAlign: "center", padding: "20px 0" }}>Aucune provision configurée.</div>
+                  )}
+
+                  {envsAvecProv.length > 1 && (
+                    <button onClick={() => {
+                      const newSel = {};
+                      envsAvecProv.forEach(e => { newSel[e.id] = !tousCoches; });
+                      setForm(f => ({ ...f, selectionProvisions: newSel }));
+                    }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 8, background: "#F7F5F2", border: "0.5px solid #EDE9E3", borderRadius: 10, fontSize: 12, fontWeight: 600, color: "#8FA89A" }}>
+                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${tousCoches ? "#3A8A5C" : "#D0CCC8"}`, background: tousCoches ? "#3A8A5C" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        {tousCoches && <span style={{ color: "#fff", fontSize: 11, lineHeight: 1 }}>✓</span>}
+                      </div>
+                      Tout sélectionner
+                    </button>
+                  )}
+
+                  {envsAvecProv.map(e => {
+                    const checked = sel[e.id] !== false;
+                    return (
+                      <button key={e.id} onClick={() => setForm(f => ({ ...f, selectionProvisions: { ...f.selectionProvisions, [e.id]: !checked } }))}
+                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", marginBottom: 6, background: checked ? "#F0FAF4" : "#FAFAF8", border: `0.5px solid ${checked ? "#AADABF" : "#EDE9E3"}`, borderRadius: 10, textAlign: "left" }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${checked ? "#3A8A5C" : "#D0CCC8"}`, background: checked ? "#3A8A5C" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {checked && <span style={{ color: "#fff", fontSize: 11, lineHeight: 1 }}>✓</span>}
+                        </div>
+                        <span style={{ fontSize: 13, color: "#2D3A35", flex: 1 }}>{e.icon} {e.name}</span>
+                        <span style={{ fontSize: 13, color: checked ? "#3A8A5C" : "#B0A899", fontWeight: 600 }}>+{fmt(e.provisionMensuelle)}</span>
+                      </button>
+                    );
+                  })}
+
+                  {envsAvecProv.length > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 4px 4px", fontSize: 12, color: "#8FA89A", borderTop: "0.5px solid #EDE9E3", marginTop: 4 }}>
+                      <span style={{ fontWeight: 600 }}>TOTAL SÉLECTIONNÉ</span>
+                      <span style={{ color: "#3A8A5C", fontFamily: "'Lora', serif", fontWeight: 600 }}>+{fmt(totalSel)}</span>
+                    </div>
+                  )}
+
+                  <button onClick={appliquerProvisions} disabled={totalSel === 0}
+                    style={{ ...btnPrimaryStyle, marginTop: 16, opacity: totalSel === 0 ? 0.4 : 1 }}>
+                    APPLIQUER
+                  </button>
+                </>
+              );
+            })()}
 
             {modal === "transfert" && (
               <>
