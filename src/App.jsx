@@ -97,9 +97,18 @@ export default function App() {
 
   const upd = (fn) => setData(prev => { const n = JSON.parse(JSON.stringify(prev)); fn(n); return n; });
 
-  const soldeTotal = data.enveloppes.reduce((s, e) => s + e.solde, 0);
+  const todayStr = today();
+  const getSoldeReel = (envId) => data.mouvements
+    .filter(m => m.enveloppeId === envId && m.date <= todayStr)
+    .reduce((s, m) => m.type === "credit" ? s + m.montant : s - m.montant, 0);
+  const getSoldeProjete = (envId) => data.mouvements
+    .filter(m => m.enveloppeId === envId)
+    .reduce((s, m) => m.type === "credit" ? s + m.montant : s - m.montant, 0);
+  const hasFuturs = (envId) => data.mouvements.some(m => m.enveloppeId === envId && m.date > todayStr);
+
+  const soldeTotal = data.enveloppes.reduce((s, e) => s + getSoldeReel(e.id), 0);
   const enveloppeEpargne = data.enveloppes.find(e => e.isSavings);
-  const soldeEpargne = enveloppeEpargne?.solde ?? 0;
+  const soldeEpargne = enveloppeEpargne ? getSoldeReel(enveloppeEpargne.id) : 0;
   const totalProvisions = data.enveloppes.reduce((s, e) => s + (e.provisionMensuelle || 0), 0);
 
   const getEnv = (id) => data.enveloppes.find(e => e.id === id);
@@ -140,11 +149,7 @@ export default function App() {
     const montant = parseFloat(form.montant);
     if (!form.label || isNaN(montant) || montant <= 0) return;
     const m = { id: Date.now(), enveloppeId: activeEnv, type: form.type, label: form.label, montant, date: form.date || today() };
-    upd(d => {
-      d.mouvements.push(m);
-      const e = d.enveloppes.find(e => e.id === activeEnv);
-      e.solde = form.type === "credit" ? e.solde + montant : e.solde - montant;
-    });
+    upd(d => { d.mouvements.push(m); });
     setModal(null); setForm({});
   };
 
@@ -158,7 +163,6 @@ export default function App() {
           if (dejaFait) return;
           const m = { id: Date.now() + e.id, enveloppeId: e.id, type: "credit", label: "Provision mensuelle", montant: e.provisionMensuelle, date: today() };
           d.mouvements.push(m);
-          e.solde += e.provisionMensuelle;
         }
       });
     });
@@ -174,18 +178,12 @@ export default function App() {
       const dst = d.enveloppes.find(e => e.id === Number(form.vers));
       d.mouvements.push({ id: ts,     enveloppeId: src.id, type: "debit",  label: `Transfert → ${dst.name}`, montant, date: today() });
       d.mouvements.push({ id: ts + 1, enveloppeId: dst.id, type: "credit", label: `Transfert ← ${src.name}`, montant, date: today() });
-      src.solde -= montant;
-      dst.solde += montant;
     });
     setModal(null); setForm({});
   };
 
   const supprimerMouvement = (m) => {
-    upd(d => {
-      d.mouvements = d.mouvements.filter(x => x.id !== m.id);
-      const e = d.enveloppes.find(e => e.id === m.enveloppeId);
-      e.solde = m.type === "credit" ? e.solde - m.montant : e.solde + m.montant;
-    });
+    upd(d => { d.mouvements = d.mouvements.filter(x => x.id !== m.id); });
   };
 
   const sauvegarderEnv = () => {
@@ -222,10 +220,11 @@ export default function App() {
   const ICONS = ["🏠","⚡","📡","🛡️","💰","🚗","🛒","👶","💊","🎓","✈️","🎬","🐾","🏋️","📋"];
 
   // Calcul barre progression enveloppe : objectif défini > provision*12 > max des soldes
-  const maxSolde = Math.max(...data.enveloppes.map(e => e.solde), 1);
+  const maxSolde = Math.max(...data.enveloppes.map(e => getSoldeReel(e.id)), 1);
   const getPct = (env) => {
+    const solde = getSoldeReel(env.id);
     const ref = env.objectif > 0 ? env.objectif : env.provisionMensuelle > 0 ? env.provisionMensuelle * 12 : maxSolde;
-    return Math.min(100, Math.max(0, ref > 0 ? (env.solde / ref) * 100 : 0));
+    return Math.min(100, Math.max(0, ref > 0 ? (solde / ref) * 100 : 0));
   };
 
   return (
@@ -314,6 +313,10 @@ export default function App() {
                     mouvements={data.mouvements}
                     onOpen={() => { setActiveEnv(env.id); setView("detail"); }}
                     getPct={getPct}
+                    getSoldeReel={getSoldeReel}
+                    getSoldeProjete={getSoldeProjete}
+                    hasFuturs={hasFuturs}
+                    todayStr={todayStr}
                   />
                 ))}
               </div>
@@ -432,7 +435,10 @@ export default function App() {
               <div style={{ background: "rgba(255,255,255,0.65)", borderRadius: 12, padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 3, color: "#8FA89A", marginBottom: 4 }}>SOLDE</div>
-                  <div style={{ fontFamily: "'Lora', serif", fontSize: 28, fontWeight: 600, color: envActive.solde < 0 ? "#C0533A" : "#2D3A35" }}>{fmt(envActive.solde)}</div>
+                  <div style={{ fontFamily: "'Lora', serif", fontSize: 28, fontWeight: 600, color: getSoldeReel(envActive.id) < 0 ? "#C0533A" : "#2D3A35" }}>{fmt(getSoldeReel(envActive.id))}</div>
+                  {hasFuturs(envActive.id) && (
+                    <div style={{ fontSize: 11, color: "#B0A899", marginTop: 4 }}>→ {fmt(getSoldeProjete(envActive.id))} prévu</div>
+                  )}
                 </div>
                 <div style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: 6 }}>
                   {envActive.provisionMensuelle > 0 && (
@@ -450,6 +456,11 @@ export default function App() {
                         {Math.round(getPct(envActive))}%
                         <span style={{ fontSize: 10, color: "#B0A899", fontFamily: "'Nunito', sans-serif" }}> / {fmt(envActive.objectif)}</span>
                       </div>
+                      {hasFuturs(envActive.id) && (
+                        <div style={{ fontSize: 10, color: "#B0A899", marginTop: 2 }}>
+                          {Math.round(Math.min(100, getSoldeProjete(envActive.id) / envActive.objectif * 100))}% prévu
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -474,20 +485,26 @@ export default function App() {
               {mouvementsActifs.length === 0 && (
                 <div style={{ textAlign: "center", color: "#B0A899", fontSize: 13, padding: "40px 0" }}>Aucun mouvement</div>
               )}
-              {mouvementsActifs.map(m => (
-                <div key={m.id} className="row" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "0.5px solid #EDE9E3" }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: m.type === "credit" ? "#5CB87A" : "#E87060", flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 400, color: "#2D3A35" }}>{m.label}</div>
-                    <div style={{ fontSize: 10, color: "#B0A899", marginTop: 2 }}>{fmtDate(m.date)}</div>
+              {mouvementsActifs.map(m => {
+                const futur = m.date > todayStr;
+                return (
+                  <div key={m.id} className="row" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "0.5px solid #EDE9E3", opacity: futur ? 0.6 : 1 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: futur ? "#D0CCC8" : m.type === "credit" ? "#5CB87A" : "#E87060", flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 400, color: "#2D3A35", display: "flex", alignItems: "center", gap: 6 }}>
+                        {m.label}
+                        {futur && <span style={{ fontSize: 9, fontWeight: 700, color: "#B0A899", background: "#F0EDE8", borderRadius: 4, padding: "1px 5px", letterSpacing: 0.5 }}>PRÉVU</span>}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#B0A899", marginTop: 2 }}>{fmtDate(m.date)}</div>
+                    </div>
+                    <div style={{ fontFamily: "'Lora', serif", fontSize: 14, fontWeight: 600, color: futur ? "#B0A899" : m.type === "credit" ? "#3A8A5C" : "#2D3A35", flexShrink: 0 }}>
+                      {m.type === "credit" ? "+" : "−"}{fmt(m.montant)}
+                    </div>
+                    <button className="del-btn" onClick={() => supprimerMouvement(m)}
+                      style={{ opacity: 0, transition: "opacity .15s", fontSize: 13, color: "#C0533A", padding: "4px 6px", flexShrink: 0 }}>✕</button>
                   </div>
-                  <div style={{ fontFamily: "'Lora', serif", fontSize: 14, fontWeight: 600, color: m.type === "credit" ? "#3A8A5C" : "#2D3A35", flexShrink: 0 }}>
-                    {m.type === "credit" ? "+" : "−"}{fmt(m.montant)}
-                  </div>
-                  <button className="del-btn" onClick={() => supprimerMouvement(m)}
-                    style={{ opacity: 0, transition: "opacity .15s", fontSize: 13, color: "#C0533A", padding: "4px 6px", flexShrink: 0 }}>✕</button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );
@@ -584,7 +601,7 @@ export default function App() {
                   style={{ ...inputStyle, marginBottom: 12 }}>
                   <option value="">— Choisir une enveloppe</option>
                   {data.enveloppes.map(e => (
-                    <option key={e.id} value={e.id}>{e.icon} {e.name} ({fmt(e.solde)})</option>
+                    <option key={e.id} value={e.id}>{e.icon} {e.name} ({fmt(getSoldeReel(e.id))})</option>
                   ))}
                 </select>
 
@@ -593,7 +610,7 @@ export default function App() {
                   style={{ ...inputStyle, marginBottom: 12 }}>
                   <option value="">— Choisir une enveloppe</option>
                   {data.enveloppes.map(e => (
-                    <option key={e.id} value={e.id}>{e.icon} {e.name} ({fmt(e.solde)})</option>
+                    <option key={e.id} value={e.id}>{e.icon} {e.name} ({fmt(getSoldeReel(e.id))})</option>
                   ))}
                 </select>
 
@@ -662,11 +679,14 @@ export default function App() {
   );
 }
 
-function SortableEnvCard({ env, mouvements, onOpen, getPct }) {
+function SortableEnvCard({ env, mouvements, onOpen, getPct, getSoldeReel, getSoldeProjete, hasFuturs, todayStr }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: env.id });
   const pal = CAT_PALETTES[env.paletteIdx ?? 4];
   const nbMvt = mouvements.filter(m => m.enveloppeId === env.id).length;
   const pct = getPct(env);
+  const soldeReel = getSoldeReel(env.id);
+  const soldeProjete = getSoldeProjete(env.id);
+  const futurs = hasFuturs(env.id);
 
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, marginBottom: 8 }}>
@@ -697,8 +717,15 @@ function SortableEnvCard({ env, mouvements, onOpen, getPct }) {
               )}
             </div>
           </div>
-          <div style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 600, color: env.solde < 0 ? "#C0533A" : "#2D3A35", flexShrink: 0, paddingRight: 4 }}>
-            {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(env.solde ?? 0)}
+          <div style={{ flexShrink: 0, paddingRight: 4, textAlign: "right" }}>
+            <div style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 600, color: soldeReel < 0 ? "#C0533A" : "#2D3A35" }}>
+              {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(soldeReel)}
+            </div>
+            {futurs && (
+              <div style={{ fontSize: 10, color: "#B0A899", marginTop: 2 }}>
+                → {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(soldeProjete)} prévu
+              </div>
+            )}
           </div>
         </button>
       </div>
