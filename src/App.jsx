@@ -153,6 +153,24 @@ export default function App() {
     setModal(null); setForm({});
   };
 
+  const appliquerVirements = () => {
+    const selection = form.selectionVirements || {};
+    const moisCourant = today().slice(0, 7);
+    upd(d => {
+      d.enveloppes.forEach(e => {
+        (e.virements || []).forEach(v => {
+          if (!selection[v.id]) return;
+          const label = `Virement — ${v.label}`;
+          const dejaFait = d.mouvements.some(m => m.enveloppeId === e.id && m.label === label && m.date.startsWith(moisCourant));
+          if (dejaFait) return;
+          const dateVirement = `${moisCourant}-${String(v.jour).padStart(2, "0")}`;
+          d.mouvements.push({ id: Date.now() + v.id, enveloppeId: e.id, type: "debit", label, montant: v.montant, date: dateVirement });
+        });
+      });
+    });
+    setModal(null); setForm({});
+  };
+
   const appliquerProvisions = () => {
     const selection = form.selectionProvisions || {};
     const moisCourant = today().slice(0, 7);
@@ -192,7 +210,7 @@ export default function App() {
       upd(d => {
         const paletteIdx = d.enveloppes.length % CAT_PALETTES.length;
         if (form.isSavings) d.enveloppes.forEach(e => { e.isSavings = false; });
-        d.enveloppes.push({ id: d.nextId++, name: form.name, icon: form.icon || "📦", paletteIdx, provisionMensuelle: parseFloat(form.provisionMensuelle) || 0, objectif: parseFloat(form.objectif) || 0, solde: 0, isSavings: !!form.isSavings });
+        d.enveloppes.push({ id: d.nextId++, name: form.name, icon: form.icon || "📦", paletteIdx, provisionMensuelle: parseFloat(form.provisionMensuelle) || 0, objectif: parseFloat(form.objectif) || 0, virements: form.virements || [], solde: 0, isSavings: !!form.isSavings });
       });
     } else {
       upd(d => {
@@ -202,6 +220,7 @@ export default function App() {
         e.icon = form.icon || e.icon;
         e.provisionMensuelle = parseFloat(form.provisionMensuelle) || 0;
         e.objectif = parseFloat(form.objectif) || 0;
+        e.virements = form.virements || [];
         e.isSavings = !!form.isSavings;
       });
     }
@@ -302,6 +321,10 @@ export default function App() {
             <button onClick={() => { setForm({ selectionProvisions: {} }); setModal("provision"); }}
               style={{ flex: 1, padding: "10px 14px", background: "#FFFFFF", border: "0.5px solid #EDE9E3", borderRadius: 10, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: "#3A8A5C", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
               ↑ Provisions
+            </button>
+            <button onClick={() => { setForm({ selectionVirements: {} }); setModal("virements"); }}
+              style={{ flex: 1, padding: "10px 14px", background: "#FFFFFF", border: "0.5px solid #EDE9E3", borderRadius: 10, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: "#C0533A", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+              ↓ Virements
             </button>
             <button onClick={() => { setForm({ de: "", vers: "" }); setModal("transfert"); }}
               style={{ flex: 1, padding: "10px 14px", background: "#FFFFFF", border: "0.5px solid #EDE9E3", borderRadius: 10, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: "#8B7355", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
@@ -438,7 +461,7 @@ export default function App() {
                   <div style={{ fontSize: 10, fontWeight: 600, color: "#8FA89A", letterSpacing: 1 }}>ENVELOPPE</div>
                   <div style={{ fontFamily: "'Lora', serif", fontSize: 18, fontWeight: 600, color: "#2D3A35" }}>{envActive.name}</div>
                 </div>
-                <button onClick={() => { setEditTarget(envActive.id); setForm({ name: envActive.name, icon: envActive.icon, provisionMensuelle: envActive.provisionMensuelle, objectif: envActive.objectif || "", isSavings: !!envActive.isSavings }); setModal("editEnv"); }}
+                <button onClick={() => { setEditTarget(envActive.id); setForm({ name: envActive.name, icon: envActive.icon, provisionMensuelle: envActive.provisionMensuelle, objectif: envActive.objectif || "", virements: envActive.virements || [], isSavings: !!envActive.isSavings }); setModal("editEnv"); }}
                   style={{ fontSize: 12, color: "#B0A899", border: "0.5px solid #EDE9E3", borderRadius: 8, padding: "6px 10px", background: "rgba(255,255,255,0.7)" }}>✎</button>
               </div>
 
@@ -603,6 +626,58 @@ export default function App() {
               );
             })()}
 
+            {modal === "virements" && (() => {
+              const jourAujourdhui = new Date().getDate();
+              const moisCourant = today().slice(0, 7);
+              const tousVirements = data.enveloppes.flatMap(e => (e.virements || []).map(v => ({ ...v, envId: e.id, envName: e.name, envIcon: e.icon })));
+              const sel = form.selectionVirements || {};
+              const totalSel = tousVirements.filter(v => sel[v.id]).reduce((s, v) => s + v.montant, 0);
+              return (
+                <>
+                  <div style={{ fontFamily: "'Lora', serif", fontSize: 17, fontWeight: 600, marginBottom: 6, color: "#2D3A35" }}>↓ Virements du mois</div>
+                  <div style={{ fontSize: 12, color: "#8FA89A", marginBottom: 16 }}>Sélectionne les virements à appliquer.</div>
+
+                  {tousVirements.length === 0 && (
+                    <div style={{ fontSize: 12, color: "#B0A899", textAlign: "center", padding: "20px 0" }}>Aucun virement configuré.</div>
+                  )}
+
+                  {tousVirements.map(v => {
+                    const checked = !!sel[v.id];
+                    const dejaFait = data.mouvements.some(m => m.enveloppeId === v.envId && m.label === `Virement — ${v.label}` && m.date.startsWith(moisCourant));
+                    const pasEncore = v.jour > jourAujourdhui;
+                    const disabled = dejaFait || false;
+                    return (
+                      <button key={v.id} onClick={() => { if (disabled) return; setForm(f => ({ ...f, selectionVirements: { ...f.selectionVirements, [v.id]: !checked } })); }}
+                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", marginBottom: 6, background: dejaFait ? "#F7F5F2" : checked ? "#FFF0EE" : "#FAFAF8", border: `0.5px solid ${dejaFait ? "#EDE9E3" : checked ? "#F0B0A0" : "#EDE9E3"}`, borderRadius: 10, textAlign: "left", opacity: dejaFait ? 0.6 : 1, cursor: dejaFait ? "default" : "pointer" }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${dejaFait ? "#D0CCC8" : checked ? "#C0533A" : "#D0CCC8"}`, background: dejaFait ? "#EDE9E3" : checked ? "#C0533A" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {(dejaFait || checked) && <span style={{ color: "#fff", fontSize: 11, lineHeight: 1 }}>✓</span>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: dejaFait ? "#B0A899" : "#2D3A35" }}>{v.label}</div>
+                          <div style={{ fontSize: 10, color: "#B0A899", marginTop: 1 }}>{v.envIcon} {v.envName} · le {v.jour}</div>
+                        </div>
+                        <span style={{ fontSize: 13, color: dejaFait ? "#B0A899" : checked ? "#C0533A" : "#B0A899", fontWeight: 600, flexShrink: 0 }}>
+                          {dejaFait ? "déjà fait" : `−${fmt(v.montant)}`}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {tousVirements.length > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 4px 4px", fontSize: 12, color: "#8FA89A", borderTop: "0.5px solid #EDE9E3", marginTop: 4 }}>
+                      <span style={{ fontWeight: 600 }}>TOTAL SÉLECTIONNÉ</span>
+                      <span style={{ color: "#C0533A", fontFamily: "'Lora', serif", fontWeight: 600 }}>−{fmt(totalSel)}</span>
+                    </div>
+                  )}
+
+                  <button onClick={appliquerVirements} disabled={totalSel === 0}
+                    style={{ ...btnPrimaryStyle, marginTop: 16, opacity: totalSel === 0 ? 0.4 : 1, background: "#C0533A" }}>
+                    APPLIQUER
+                  </button>
+                </>
+              );
+            })()}
+
             {modal === "transfert" && (
               <>
                 <div style={{ fontFamily: "'Lora', serif", fontSize: 17, fontWeight: 600, marginBottom: 20, color: "#2D3A35" }}>⇄ Transfert entre enveloppes</div>
@@ -664,6 +739,25 @@ export default function App() {
                 <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1, color: "#8FA89A", marginBottom: 8 }}>OBJECTIF À ATTEINDRE (optionnel)</div>
                 <input type="number" placeholder="ex : 5 000 €" value={form.objectif || ""} onChange={e => setForm(f => ({ ...f, objectif: e.target.value }))}
                   style={{ ...inputStyle, marginBottom: 16 }} />
+
+                {/* Virements récurrents */}
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1, color: "#8FA89A", marginBottom: 8 }}>VIREMENTS RÉCURRENTS</div>
+                {(form.virements || []).map((v, i) => (
+                  <div key={v.id} style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center" }}>
+                    <input placeholder="Libellé" value={v.label} onChange={e => setForm(f => { const vs = [...f.virements]; vs[i] = { ...vs[i], label: e.target.value }; return { ...f, virements: vs }; })}
+                      style={{ ...inputStyle, marginBottom: 0, flex: 2 }} />
+                    <input type="number" placeholder="€" value={v.montant || ""} onChange={e => setForm(f => { const vs = [...f.virements]; vs[i] = { ...vs[i], montant: parseFloat(e.target.value) || 0 }; return { ...f, virements: vs }; })}
+                      style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
+                    <input type="number" placeholder="Jour" min="1" max="31" value={v.jour || ""} onChange={e => setForm(f => { const vs = [...f.virements]; vs[i] = { ...vs[i], jour: parseInt(e.target.value) || 1 }; return { ...f, virements: vs }; })}
+                      style={{ ...inputStyle, marginBottom: 0, width: 60, flex: "0 0 60px" }} />
+                    <button onClick={() => setForm(f => ({ ...f, virements: f.virements.filter((_, j) => j !== i) }))}
+                      style={{ color: "#C0533A", fontSize: 16, padding: "4px 6px", flexShrink: 0 }}>✕</button>
+                  </div>
+                ))}
+                <button onClick={() => setForm(f => ({ ...f, virements: [...(f.virements || []), { id: Date.now(), label: "", montant: 0, jour: 1 }] }))}
+                  style={{ width: "100%", padding: "9px", background: "#F7F5F2", border: "0.5px dashed #D0CCC8", borderRadius: 10, fontSize: 12, color: "#8FA89A", marginBottom: 16 }}>
+                  + Ajouter un virement
+                </button>
 
                 {/* Toggle épargne */}
                 <button onClick={() => setForm(f => ({ ...f, isSavings: !f.isSavings }))}
