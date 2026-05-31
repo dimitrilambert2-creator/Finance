@@ -250,8 +250,19 @@ export default function App() {
           </div>
 
           {/* Montant total */}
-          <div style={{ fontFamily: "'Lora', serif", fontSize: 38, fontWeight: 600, color: "#2D3A35", lineHeight: 1.1, marginBottom: 16 }}>
-            {fmt(soldeTotal)}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontFamily: "'Lora', serif", fontSize: 38, fontWeight: 600, color: "#2D3A35", lineHeight: 1.1 }}>
+              {fmt(soldeTotal)}
+            </div>
+            {(() => {
+              const totalProjete = data.enveloppes.reduce((s, e) => s + getSoldeProjete(e.id), 0);
+              if (totalProjete === soldeTotal) return null;
+              return (
+                <div style={{ fontSize: 12, color: "#B0A899", marginTop: 4 }}>
+                  → {fmt(totalProjete)} prévu
+                </div>
+              );
+            })()}
           </div>
 
           {/* Grille stats 1×2 */}
