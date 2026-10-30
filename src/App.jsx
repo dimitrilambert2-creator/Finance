@@ -32,6 +32,10 @@ const DEFAULT_DATA = {
 const fmt = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n ?? 0);
 const fmtDate = (iso) => new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 const today = () => new Date().toISOString().slice(0, 10);
+const moisSuivant = (mois) => {
+  const [y, mo] = mois.split("-").map(Number);
+  return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
+};
 const labelMois = (mois) => {
   const [y, mo] = mois.split("-");
   return new Date(y, mo - 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
@@ -174,12 +178,15 @@ export default function App() {
   const appliquerProvisions = () => {
     const selection = form.selectionProvisions || {};
     const moisCourant = today().slice(0, 7);
+    const prochain = form.moisProvision === "prochain";
+    const moisCible = prochain ? moisSuivant(moisCourant) : moisCourant;
+    const dateProvision = prochain ? `${moisCible}-01` : today();
     upd(d => {
       d.enveloppes.forEach(e => {
         if (e.provisionMensuelle > 0 && selection[e.id] === true) {
-          const dejaFait = d.mouvements.some(m => m.enveloppeId === e.id && m.label === "Provision mensuelle" && m.date.startsWith(moisCourant));
+          const dejaFait = d.mouvements.some(m => m.enveloppeId === e.id && m.label === "Provision mensuelle" && m.date.startsWith(moisCible));
           if (dejaFait) return;
-          const m = { id: Date.now() + e.id, enveloppeId: e.id, type: "credit", label: "Provision mensuelle", montant: e.provisionMensuelle, date: today() };
+          const m = { id: Date.now() + e.id, enveloppeId: e.id, type: "credit", label: "Provision mensuelle", montant: e.provisionMensuelle, date: dateProvision };
           d.mouvements.push(m);
         }
       });
@@ -569,13 +576,30 @@ export default function App() {
               const envsAvecProv = data.enveloppes.filter(e => e.provisionMensuelle > 0);
               const sel = form.selectionProvisions || {};
               const moisCourant = today().slice(0, 7);
-              const dejaProvisionnees = new Set(data.mouvements.filter(m => m.label === "Provision mensuelle" && m.date.startsWith(moisCourant)).map(m => m.enveloppeId));
+              const prochain = form.moisProvision === "prochain";
+              const moisCible = prochain ? moisSuivant(moisCourant) : moisCourant;
+              const dejaProvisionnees = new Set(data.mouvements.filter(m => m.label === "Provision mensuelle" && m.date.startsWith(moisCible)).map(m => m.enveloppeId));
               const totalSel = envsAvecProv.filter(e => sel[e.id] === true && !dejaProvisionnees.has(e.id)).reduce((s, e) => s + e.provisionMensuelle, 0);
               const tousCoches = envsAvecProv.every(e => sel[e.id] === true);
               return (
                 <>
                   <div style={{ fontFamily: "'Lora', serif", fontSize: 17, fontWeight: 600, marginBottom: 6, color: "#2D3A35" }}>Provisions du mois</div>
-                  <div style={{ fontSize: 12, color: "#8FA89A", marginBottom: 16 }}>Sélectionne les enveloppes à provisionner.</div>
+                  <div style={{ fontSize: 12, color: "#8FA89A", marginBottom: 12 }}>Sélectionne les enveloppes à provisionner.</div>
+
+                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                    {[["courant", moisCourant], ["prochain", moisSuivant(moisCourant)]].map(([key, mois]) => {
+                      const actif = (form.moisProvision || "courant") === key;
+                      return (
+                        <button key={key} onClick={() => setForm(f => ({ ...f, moisProvision: key, selectionProvisions: {} }))}
+                          style={{ flex: 1, padding: "8px 10px", background: actif ? "#3A8A5C" : "#FAFAF8", border: `0.5px solid ${actif ? "#3A8A5C" : "#EDE9E3"}`, borderRadius: 10, fontSize: 12, fontWeight: 600, color: actif ? "#fff" : "#8FA89A", textTransform: "capitalize" }}>
+                          {labelMois(mois)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#B0A899", marginBottom: 14 }}>
+                    {prochain ? `Datées du 1er ${labelMois(moisCible)} — comptées dans le solde projeté.` : "Datées d'aujourd'hui."}
+                  </div>
 
                   {envsAvecProv.length === 0 && (
                     <div style={{ fontSize: 12, color: "#B0A899", textAlign: "center", padding: "20px 0" }}>Aucune provision configurée.</div>
