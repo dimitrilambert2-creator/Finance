@@ -160,14 +160,17 @@ export default function App() {
   const appliquerVirements = () => {
     const selection = form.selectionVirements || {};
     const moisCourant = today().slice(0, 7);
+    const moisCible = form.moisVirement === "prochain" ? moisSuivant(moisCourant) : moisCourant;
+    const [y, mo] = moisCible.split("-").map(Number);
+    const dernierJour = new Date(y, mo, 0).getDate();
     upd(d => {
       d.enveloppes.forEach(e => {
         (e.virements || []).forEach(v => {
           if (!selection[v.id]) return;
           const label = `Virement — ${v.label}`;
-          const dejaFait = d.mouvements.some(m => m.enveloppeId === e.id && m.label === label && m.date.startsWith(moisCourant));
+          const dejaFait = d.mouvements.some(m => m.enveloppeId === e.id && m.label === label && m.date.startsWith(moisCible));
           if (dejaFait) return;
-          const dateVirement = `${moisCourant}-${String(v.jour).padStart(2, "0")}`;
+          const dateVirement = `${moisCible}-${String(Math.min(v.jour, dernierJour)).padStart(2, "0")}`;
           d.mouvements.push({ id: Date.now() + v.id, enveloppeId: e.id, type: "debit", label, montant: v.montant, date: dateVirement });
         });
       });
@@ -651,15 +654,31 @@ export default function App() {
             })()}
 
             {modal === "virements" && (() => {
-              const jourAujourdhui = new Date().getDate();
               const moisCourant = today().slice(0, 7);
+              const prochain = form.moisVirement === "prochain";
+              const moisCible = prochain ? moisSuivant(moisCourant) : moisCourant;
               const tousVirements = data.enveloppes.flatMap(e => (e.virements || []).map(v => ({ ...v, envId: e.id, envName: e.name, envIcon: e.icon })));
               const sel = form.selectionVirements || {};
               const totalSel = tousVirements.filter(v => sel[v.id]).reduce((s, v) => s + v.montant, 0);
               return (
                 <>
                   <div style={{ fontFamily: "'Lora', serif", fontSize: 17, fontWeight: 600, marginBottom: 6, color: "#2D3A35" }}>↓ Virements du mois</div>
-                  <div style={{ fontSize: 12, color: "#8FA89A", marginBottom: 16 }}>Sélectionne les virements à appliquer.</div>
+                  <div style={{ fontSize: 12, color: "#8FA89A", marginBottom: 12 }}>Sélectionne les virements à appliquer.</div>
+
+                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                    {[["courant", moisCourant], ["prochain", moisSuivant(moisCourant)]].map(([key, mois]) => {
+                      const actif = (form.moisVirement || "courant") === key;
+                      return (
+                        <button key={key} onClick={() => setForm(f => ({ ...f, moisVirement: key, selectionVirements: {} }))}
+                          style={{ flex: 1, padding: "8px 10px", background: actif ? "#C0533A" : "#FAFAF8", border: `0.5px solid ${actif ? "#C0533A" : "#EDE9E3"}`, borderRadius: 10, fontSize: 12, fontWeight: 600, color: actif ? "#fff" : "#8FA89A", textTransform: "capitalize" }}>
+                          {labelMois(mois)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#B0A899", marginBottom: 14 }}>
+                    Datés au jour prévu de {labelMois(moisCible)}{prochain ? " — comptés dans le solde projeté." : "."}
+                  </div>
 
                   {tousVirements.length === 0 && (
                     <div style={{ fontSize: 12, color: "#B0A899", textAlign: "center", padding: "20px 0" }}>Aucun virement configuré.</div>
@@ -667,9 +686,8 @@ export default function App() {
 
                   {tousVirements.map(v => {
                     const checked = !!sel[v.id];
-                    const dejaFait = data.mouvements.some(m => m.enveloppeId === v.envId && m.label === `Virement — ${v.label}` && m.date.startsWith(moisCourant));
-                    const pasEncore = v.jour > jourAujourdhui;
-                    const disabled = dejaFait || false;
+                    const dejaFait = data.mouvements.some(m => m.enveloppeId === v.envId && m.label === `Virement — ${v.label}` && m.date.startsWith(moisCible));
+                    const disabled = dejaFait;
                     return (
                       <button key={v.id} onClick={() => { if (disabled) return; setForm(f => ({ ...f, selectionVirements: { ...f.selectionVirements, [v.id]: !checked } })); }}
                         style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", marginBottom: 6, background: dejaFait ? "#F7F5F2" : checked ? "#FFF0EE" : "#FAFAF8", border: `0.5px solid ${dejaFait ? "#EDE9E3" : checked ? "#F0B0A0" : "#EDE9E3"}`, borderRadius: 10, textAlign: "left", opacity: dejaFait ? 0.6 : 1, cursor: dejaFait ? "default" : "pointer" }}>
